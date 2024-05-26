@@ -1,0 +1,275 @@
+---
+title: "Multiple Linear Regression"
+output: html_document
+date: "2024-03-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(psych)
+library(DescTools)
+library(tidyverse)
+library(kableExtra)
+library(infer)
+library(ggstatsplot)
+library(visreg)
+library(patchwork)
+```
+
+## R Markdown
+
+Import the data:
+
+
+# QUESTION - Does per capita alcohol consumption affect life expectancy?
+
+```{r data}
+
+life = na.omit(read.csv("/Users/andrewthompson/Downloads/life_expectancy_dataset.csv"))
+
+head(life)
+```
+
+## Including Plots
+
+Below, descriptive statistics were run, to determine some basic facts about the measurements in this dataset. This will help with summarizing and visualizing individual variables and the relationships that they have with each other. 
+
+```{r descriptive statistics}
+
+description = as.data.frame(describe(life, omit = TRUE, IQR = TRUE))
+
+description
+
+description = round(description[,c('vars', "n", "mean", "sd", "median", "min", "max", 'range', "skew", "IQR")],digits = 2)
+
+kable(description, col.names = gsub("[.]", " ", names(description)), table.attr = "style=\"color: black;\"") %>%
+  column_spec (2:10,border_left = T, border_right = T) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F,
+                position = "left")
+
+```
+
+```{r categorical table}
+
+## Categorical Table
+table(life$Status)
+genrefrequency = c(512, 2426)
+sum(genrefrequency)
+total = c(512+2426)
+prop = genrefrequency/total
+table2 = data.frame(table(life$Status), prop)
+
+kable(table2, col.names = c("Genre", "Frequency", "Proportion"), table.attr = "style=\"color: black;\"") %>%
+  column_spec (1:3,border_left = T, border_right = T) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F,
+                position = "left")
+
+# ALCOHOL
+ggplot(life, aes(x = Alcohol, fill = Status)) +
+  geom_histogram(bins = 15, position = "stack") +
+  scale_y_continuous("Number of Countries",
+                     limits = c(0,400),
+                     breaks = seq(0, 400, 50)) + 
+  scale_x_continuous("Alcohol Consumption Per Capita (Liters)") + 
+  ggtitle("Distribution of Alcohol Consumption for Developed and Developing Countries") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+# SCHOOLING
+ggplot(life, aes(x = Schooling, fill = Status)) +
+  geom_histogram(bins = 15, position = "stack") +
+  scale_y_continuous("Number of Countries",
+                     limits = c(0,350),
+                     breaks = seq(0, 350, 50)) + 
+  scale_x_continuous("Hours of Schooling") + 
+  ggtitle("Hours of Schooling for Developed and Developing Countries")
+
+# INCOME COMP
+ggplot(life, aes(x = Income.composition.of.resources, fill = Status)) +
+  geom_histogram(bins = 15, position = "stack") +
+  scale_y_continuous("Number of Countries",
+                     limits = c(0,350),
+                     breaks = seq(0, 350, 50)) + 
+  scale_x_continuous("Income Composition of Resources (Human Development Index)") + 
+  ggtitle("Income Composition of Resources for Developed and Developing Countries")
+
+ggplot(life, aes(x = Life.expectancy, fill = Status)) +
+  geom_histogram(bins = 15, position = "stack") +
+  scale_y_continuous("Number of Countries",
+                     limits = c(0,400),
+                     breaks = seq(0, 400, 50)) + 
+  scale_x_continuous("Life Expectancy (years)") + 
+  ggtitle("Life Expectancy for Developed and Developing Countries")
+
+
+
+```
+
+
+
+Now, I am looking for variables to graph for the purpose of descriptive statistics, where the absolute value of the absolute value of the correlation is relatively high and of interest (for the purpose of limiting the number of graphs that are to be created)
+
+```{r determining strong correlations}
+
+life_num <- life[, sapply(life, is.numeric)]
+round(cor(life_num, life_num$Life.expectancy), digits = 3)
+
+
+```
+
+The final values selected for multiple linear regression analysis along with Life.expectancy were Alcohol (consumption in liters), Schooling (hours), and Income composition of resources (0 to 1 on human development scale).
+
+For multiple linear regression analysis, the values selected were Alcohol, Income composition of resources, and Schooling. 
+
+
+```{r ggplots}
+
+############# PLOT OF ALCOHOL ############
+ggplot(life, aes(x = Alcohol, y = Life.expectancy)) +
+ geom_point() + 
+    geom_abline(intercept = 65.3165, slope = .8792, color = "red", size = 1)+
+  scale_y_continuous("Life Expectancy",
+                     limits = c(40, 90),
+                     breaks = seq(40, 90, 10)) + 
+  scale_x_continuous("Per Capita Alcohol Consumption (liters)",
+                     limits = c(0, 20),
+                     breaks = seq(0, 20, 4)) + 
+  ggtitle("Life Expectancy Compared With Alcohol Consumption") +
+  theme(plot.title = element_text(hjust = .5),
+        text = element_text(size = 15))
+
+######### PLOT OF INCOME COMP ###########
+ggplot(life, aes(x = Income.composition.of.resources, y = Life.expectancy)) +
+ geom_point() +   
+    geom_abline(intercept = 47.42, slope = 34.65, color = "red", size = 1)+
+  scale_y_continuous("Life Expectancy",
+                     limits = c(40, 90),
+                     breaks = seq(40, 90, 10)) + 
+  scale_x_continuous("Human Development Index (in terms of income composition)",
+                     limits = c(0, 1),
+                     breaks = seq(0, 1, .2)) + 
+  ggtitle("Life Expectancy Compared Income composition") +
+  theme(plot.title = element_text(hjust = .5),
+        text = element_text(size = 15))
+
+######### PLOT OF SCHOOLING ############
+ggplot(life, aes(x = Schooling, y = Life.expectancy)) +
+ geom_point() + 
+    geom_abline(intercept = 41.55, slope = 2.29, color = "red", size = 1)+
+  scale_y_continuous("Life Expectancy",
+                     limits = c(40, 90),
+                     breaks = seq(40, 90, 10)) + 
+  scale_x_continuous("Schooling",
+                     limits = c(0, 25),
+                     breaks = seq(0, 25, 5)) + 
+  ggtitle("Life Expectancy in Terms of Schooling") +
+  theme(plot.title = element_text(hjust = .5),
+        text = element_text(size = 15))
+
+
+
+```
+
+
+Areas of interest: What is the relationship between Alcohol Consumption, Schooling, Income Comp. of Resources, and the output, Life Expectancy?
+
+```{r singular linear models}
+for (column in names(life_num)) {
+  if (column == "Life.expectancy") next
+  formula = as.formula(paste("Life.expectancy ~", column))
+  # I found this technique on the internet to make sure I can get all of them in
+  mod = lm(formula, data = life_num)
+  
+  print(paste("Model using", column))
+  print(summary(mod))
+}
+
+multi = lm(Life.expectancy ~ Alcohol + Schooling + Income.composition.of.resources, data = life_num)
+summary(multi)
+anova(multi)
+
+visreg(multi)
+
+ggcoefstats(multi)
+
+```
+
+
+
+I know that those three variables are statistically significant becasue the summary p value is lower than alpha = 0.05, and therefore they reject the null that there is no correlation (beta or slope = 0)
+
+DISCUSS SOME VARIABLES THAT HAVE LOW CORRELATION and discuss the high three
+
+```{r single beta statistical tests}
+
+# CONFIDENCE INTERVAL FOR SIMPLE LINEAR REGRESSION
+t = qt(.025, df = 1647)
+seslope = .04924
+me = tcalc*seslope
+CI = c(0.87925+me, 0.87925-me)
+
+# We are 95% confident that the true beta value (life expectancy for the population based on alcohol consumption) lies between 0.7826704 and 0.9758296
+# Information for Results:
+# Beta = 0.87925, t = 17.86, df = 1647, p-value < 2.2e-16, CI = [0.3614734 0.4423903]
+
+# R^2 FOR SIMPLE LINEAR REGRESSION
+cor.test(life_num$Alcohol, life_num$Life.expectancy, alternative = "two.sided", method = "pearson", conf.level = 0.95)
+r = cor(life_num$Alcohol, life_num$Life.expectancy, method = "pearson")
+r
+rsquare = r^2
+rsquare
+
+# 16.22 percent of the variability in life expectancy can be explained by alcohol consumption
+
+
+# HYPOTHESIS TEST FOR SIMPLE LINEAR REGRESSION
+slope = 0.87925    
+seslope = 0.04924
+
+tcalc = slope/seslope
+tcalc
+
+pt(tcalc, df = 1647, lower.tail = F)
+# p < .0001, so we reject the null hypothesis. We have evidence that the slope coefficient is statistically significantly different than zero. This means that alcohol consumption can help predict life expectancy. 
+
+# Limitations: This study may seem to imply that alcohol consumption causually improves life expectancy, but this should not be drawn as a conclusion. The data cannot imply this. It is possible that in contrast with that, alcohol consumption is a result of higher income (and therefore ability to purchase alcohol) which is a confounding variable in the equation related to affording healthcare and quality of life. 
+
+```
+
+```{r multi beta statistical tests}
+
+# confidence interval for beta 1
+
+# THANKFUL FOR YOUTUBE
+coefficients = coef(summary(multi))
+se = coefficients[, "Std. Error"]
+est = coefficients[, "Estimate"]
+# T value for a/2
+t_value = qt(0.025, df = df.residual(multi))
+
+# NORMAL T FORMULA
+lower_bounds = est + t_value * se
+upper_bounds = est - t_value * se
+
+
+conf_intervals = data.frame(lower_bounds, upper_bounds)
+
+# Print the results
+print(conf_intervals)
+
+# R^2 Value for mlr model
+
+summary(multi)
+anova(multi)
+
+
+
+```
+
+From Data Description
+
+"The Global Health Observatory (GHO) data repository under World Health Organization (WHO) keeps track of the health status as well as many other related factors for all countries The datasets are made available to public for the purpose of health data analysis. The dataset related to life expectancy, health factors for 193 countries has been collected from the same WHO data repository website and its corresponding economic data was collected from United Nation website. Among all categories of health-related factors only those critical factors were chosen which are more representative. It has been observed that in the past 15 years , there has been a huge development in health sector resulting in improvement of human mortality rates especially in the developing nations in comparison to the past 30 years. Therefore, in this project we have considered data from year 2000-2015 for 193 countries for further analysis. The individual data files have been merged together into a single dataset. On initial visual inspection of the data showed some missing values. As the datasets were from WHO, we found no evident errors. Missing data was handled in R software by using Missmap command. The result indicated that most of the missing data was for population, Hepatitis B and GDP. The missing data were from less known countries like Vanuatu, Tonga, Togo,Cabo Verde etc. Finding all data for these countries was difficult and hence, it was decided that we exclude these countries from the final model dataset. The final merged file(final dataset) consists of 22 Columns and 2938 rows which meant 20 predicting variables. All predicting variables was then divided into several broad categories:Immunization related factors, Mortality factors, Economical factors and Social factors."
+
+
+
